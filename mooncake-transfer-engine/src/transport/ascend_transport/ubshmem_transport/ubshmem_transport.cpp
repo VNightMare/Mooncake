@@ -139,6 +139,9 @@ static int setDeviceContext(void *source_ptr) {
 }
 
 static bool supportFabricMem() {
+    if (true) {
+        return false;
+    }
     uint32_t num_devices = 0;
     if (!checkAcl(aclrtGetDeviceCount(&num_devices),
                   "UBShmemTransport: aclrtGetDeviceCount failed")) {

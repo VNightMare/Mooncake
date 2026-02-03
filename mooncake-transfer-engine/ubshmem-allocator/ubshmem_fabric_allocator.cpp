@@ -3,7 +3,7 @@
 
 #include <iostream>
 
-enum class MemoryBackendType { use_aclmalloc, use_aclmallocphysical, unknown, backend_error};
+enum class MemoryBackendType { use_aclmalloc, use_aclmallocphysical, unknown };
 
 extern "C" {
 
@@ -26,7 +26,7 @@ MemoryBackendType mc_probe_ub_fabric_support(int device_id) {
     aclError res = aclrtSetDevice(device_id);
     if (res != ACL_ERROR_NONE) {
         std::cerr << "Set device failed: " << device_id;
-        return MemoryBackendType::backend_error;
+        return MemoryBackendType::unknown;
     }
     aclrtPhysicalMemProp prop = {};
     prop.handleType = ACL_MEM_HANDLE_TYPE_NONE;
@@ -37,7 +37,7 @@ MemoryBackendType mc_probe_ub_fabric_support(int device_id) {
     // prop.requestedHandleTypes = CU_MEM_HANDLE_TYPE_FABRIC;  // require fabric
 
     aclrtDrvMemHandle handle;
-    size_t size = 4096;
+    size_t size = 2097152;
 
     res = aclrtMallocPhysical(&handle, size, &prop, 0);
 
@@ -63,8 +63,8 @@ void *mc_ub_fabric_malloc(ssize_t size, int device) {
     prop.memAttr = ACL_HBM_MEM_HUGE;
     prop.reserve = 0;
 
-    aclError result = aclrtMemGetAllocationGranularity(&prop,
-                                           ACL_RT_MEM_ALLOC_GRANULARITY_MINIMUM, &granularity);
+    aclError result = aclrtMemGetAllocationGranularity(
+        &prop, ACL_RT_MEM_ALLOC_GRANULARITY_MINIMUM, &granularity);
     if (result != ACL_ERROR_NONE) {
         std::cerr << "aclrtMemGetAllocationGranularity failed: " << result;
         return nullptr;
@@ -80,7 +80,8 @@ void *mc_ub_fabric_malloc(ssize_t size, int device) {
         return nullptr;
     }
     uint64_t page_type = 1;
-    result = aclrtReserveMemAddress(&ptr, size, granularity, nullptr, page_type);
+    result =
+        aclrtReserveMemAddress(&ptr, size, granularity, nullptr, page_type);
     if (result != ACL_ERROR_NONE) {
         std::cerr << "aclrtReserveMemAddress failed: " << result;
         (void)aclrtFreePhysical(handle);
@@ -121,7 +122,8 @@ void mc_ub_fabric_free(void *ptr, int device) {
     }
     auto result = aclrtMemRetainAllocationHandle(&handle, ptr);
     if (result != ACL_ERROR_NONE) {
-        std::cerr << "aclrtMemRetainAllocationHandle failed: " << result << "\n";
+        std::cerr << "aclrtMemRetainAllocationHandle failed: " << result
+                  << "\n";
         return;
     } else {
         (void)aclrtUnmapMem(ptr);

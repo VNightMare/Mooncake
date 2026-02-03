@@ -48,12 +48,12 @@ static int openIPCHandle(const std::vector<unsigned char> &buffer,
     size_t key_len = 65;
     char ipc_key[key_len] = {0};
     memcpy(ipc_key, buffer.data(), key_len);
-    
+
     // Import IPC memory handle
-    if (!checkAcl(
-            aclrtIpcMemImportByKey(shm_addr, ipc_key,
-                ACL_RT_IPC_MEM_IMPORT_FLAG_ENABLE_PEER_ACCESS),
-            "UBShmemTransport: aclrtIpcMemImportByKey failed")) {
+    if (!checkAcl(aclrtIpcMemImportByKey(
+                      shm_addr, ipc_key,
+                      ACL_RT_IPC_MEM_IMPORT_FLAG_ENABLE_PEER_ACCESS),
+                  "UBShmemTransport: aclrtIpcMemImportByKey failed")) {
         return -1;
     }
     return 0;
@@ -139,7 +139,8 @@ static int setDeviceContext(void *source_ptr) {
 }
 
 static bool supportFabricMem() {
-    if (true) {
+    const char *use_ipc = getenv("MC_USE_UBSHMEM_IPC");
+    if (use_ipc && (strcmp(use_ipc, "1") == 0)) {
         return false;
     }
     uint32_t num_devices = 0;
@@ -165,7 +166,7 @@ UBShmemTransport::~UBShmemTransport() {
     } else {
         for (auto &entry : remap_entries_) {
             if (entry.second.key != nullptr) {
-                (void) aclrtIpcMemClose(entry.second.key);
+                (void)aclrtIpcMemClose(entry.second.key);
                 delete[] entry.second.key;
             }
         }
@@ -374,9 +375,10 @@ int UBShmemTransport::registerLocalMemory(void *addr, size_t length,
         // Get IPC Mem export key
         size_t key_len = 65;
         char ipc_key[key_len] = {0};
-        if (!checkAcl(
-                aclrtIpcMemGetExportKey(addr, length, ipc_key, key_len, 0),
-                "UBShmemTransport: aclrtIpcMemGetExportKey failed")) {
+        if (!checkAcl(aclrtIpcMemGetExportKey(
+                          addr, length, ipc_key, key_len,
+                          ACL_RT_IPC_MEM_EXPORT_FLAG_DISABLE_PID_VALIDATION),
+                      "UBShmemTransport: aclrtIpcMemGetExportKey failed")) {
             (void)aclrtFree(addr);
             return -1;
         }
@@ -458,7 +460,8 @@ int UBShmemTransport::relocateSharedMemoryAddress(uint64_t &dest_addr,
 
                 if (!use_fabric_mem_) {
                     rc = openIPCHandle(output_buffer, &shm_addr);
-                } else if (output_buffer.size() == sizeof(aclrtMemFabricHandle) &&
+                } else if (output_buffer.size() ==
+                               sizeof(aclrtMemFabricHandle) &&
                            use_fabric_mem_) {
                     rc = openShareableHandle(output_buffer, entry.length,
                                              &shm_addr);
@@ -474,7 +477,7 @@ int UBShmemTransport::relocateSharedMemoryAddress(uint64_t &dest_addr,
                 OpenedShmEntry shm_entry;
                 shm_entry.shm_addr = shm_addr;
                 shm_entry.length = entry.length;
-                
+
                 // For IPC mode, we need to save the key for cleanup
                 if (!use_fabric_mem_) {
                     size_t key_len = 65;
@@ -483,7 +486,7 @@ int UBShmemTransport::relocateSharedMemoryAddress(uint64_t &dest_addr,
                 } else {
                     shm_entry.key = nullptr;
                 }
-                
+
                 remap_entries_[std::make_pair(target_id, entry.addr)] =
                     shm_entry;
             }

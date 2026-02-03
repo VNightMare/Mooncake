@@ -21,12 +21,7 @@ DEFINE_string(local_client_name, "127.0.0.1:12346", "Local client name");
 DEFINE_int32(server_npu_id, 0, "Server NPU ID to use");
 DEFINE_int32(client_npu_id, 2, "Client NPU ID to use");
 
-enum class MemoryType {
-    FABRIC_MEM_HOST,
-    FABRIC_MEM_DEVICE,
-    IPC_MEM_DEVICE,
-    IPC_MEM_HOST
-};
+enum class MemoryType { FABRIC_MEM_HOST, FABRIC_MEM_DEVICE, IPC_MEM_DEVICE };
 
 static bool checkAcl(aclError result, const char* message) {
     if (result != ACL_ERROR_NONE) {
@@ -58,20 +53,22 @@ static void* allocateAclBuffer(size_t size, int npu_id, MemoryType mem_type) {
     prop.reserve = 0;
 
     switch (mem_type) {
-        case MemoryType::FABRIC_MEM_DEVICE:
+        case MemoryType::FABRIC_MEM_DEVICE: {
             prop.allocationType = ACL_MEM_ALLOCATION_TYPE_PINNED;
             prop.memAttr = ACL_HBM_MEM_HUGE;
             prop.location.type = ACL_MEM_LOCATION_TYPE_DEVICE;
             prop.location.id = npu_id;
-            
+
             if (!checkAcl(aclrtMallocPhysical(&handle, size, &prop, 0),
-                          "UBShmemTransport: Failed to allocate fabric device memory")) {
+                          "UBShmemTransport: Failed to allocate fabric device "
+                          "memory")) {
                 return nullptr;
             }
 
             uint64_t page_type = 1;
-            if (!checkAcl(aclrtReserveMemAddress(&ptr, size, 0, nullptr, page_type),
-                          "UBShmemTransport: aclrtReserveMemAddress failed")) {
+            if (!checkAcl(
+                    aclrtReserveMemAddress(&ptr, size, 0, nullptr, page_type),
+                    "UBShmemTransport: aclrtReserveMemAddress failed")) {
                 (void)aclrtFreePhysical(handle);
                 return nullptr;
             }
@@ -83,21 +80,24 @@ static void* allocateAclBuffer(size_t size, int npu_id, MemoryType mem_type) {
                 return nullptr;
             }
             return ptr;
+        }
 
-        case MemoryType::FABRIC_MEM_HOST:
+        case MemoryType::FABRIC_MEM_HOST: {
             prop.allocationType = ACL_MEM_ALLOCATION_TYPE_PINNED;
             prop.memAttr = ACL_DDR_MEM_P2P_HUGE;
             prop.location.type = ACL_MEM_LOCATION_TYPE_HOST_NUMA;
             prop.location.id = int(npu_id / 2);
-            
+
             if (!checkAcl(aclrtMallocPhysical(&handle, size, &prop, 0),
-                          "UBShmemTransport: Failed to allocate fabric host memory")) {
+                          "UBShmemTransport: Failed to allocate fabric host "
+                          "memory")) {
                 return nullptr;
             }
 
             uint64_t page_type = 1;
-            if (!checkAcl(aclrtReserveMemAddress(&ptr, size, 0, nullptr, page_type),
-                          "UBShmemTransport: aclrtReserveMemAddress failed")) {
+            if (!checkAcl(
+                    aclrtReserveMemAddress(&ptr, size, 0, nullptr, page_type),
+                    "UBShmemTransport: aclrtReserveMemAddress failed")) {
                 (void)aclrtFreePhysical(handle);
                 return nullptr;
             }
@@ -109,17 +109,11 @@ static void* allocateAclBuffer(size_t size, int npu_id, MemoryType mem_type) {
                 return nullptr;
             }
             return ptr;
+        }
 
         case MemoryType::IPC_MEM_DEVICE:
             if (!checkAcl(aclrtMalloc(&ptr, size, ACL_MEM_MALLOC_HUGE_FIRST),
                           "UBShmemTransport: aclrtMalloc failed")) {
-                return nullptr;
-            }
-            return ptr;
-
-        case MemoryType::IPC_MEM_HOST:
-            if (!checkAcl(aclrtMallocHost(&ptr, size),
-                          "UBShmemTransport: aclrtMallocHost failed")) {
                 return nullptr;
             }
             return ptr;
@@ -133,25 +127,20 @@ static void* allocateAclBuffer(size_t size, int npu_id, MemoryType mem_type) {
 static void freeAclBuffer(void* addr, MemoryType mem_type) {
     switch (mem_type) {
         case MemoryType::FABRIC_MEM_DEVICE:
-        case MemoryType::FABRIC_MEM_HOST:
-            {
-                aclrtDrvMemHandle handle;
-                if (!checkAcl(aclrtMemRetainAllocationHandle(addr, &handle),
-                              "UBShmemTransport: aclrtMemRetainAllocationHandle failed")) {
-                    return;
-                }
-                (void)aclrtUnmapMem(addr);
-                (void)aclrtReleaseMemAddress(addr);
-                (void)aclrtFreePhysical(handle);
+        case MemoryType::FABRIC_MEM_HOST: {
+            aclrtDrvMemHandle handle;
+            if (!checkAcl(aclrtMemRetainAllocationHandle(addr, &handle),
+                          "UBShmemTransport: aclrtMemRetainAllocationHandle "
+                          "failed")) {
+                return;
             }
-            break;
+            (void)aclrtUnmapMem(addr);
+            (void)aclrtReleaseMemAddress(addr);
+            (void)aclrtFreePhysical(handle);
+        } break;
 
         case MemoryType::IPC_MEM_DEVICE:
             (void)aclrtFree(addr);
-            break;
-
-        case MemoryType::IPC_MEM_HOST:
-            (void)aclrtFreeHost(addr);
             break;
 
         default:
@@ -164,8 +153,7 @@ static void freeAclBuffer(void* addr, MemoryType mem_type) {
 static void serverThread(int npu_id, const std::string& metadataServer,
                          const std::string& localServerName,
                          std::promise<void>& serverReady,
-                         std::future<void>& testComplete,
-                         MemoryType mem_type) {
+                         std::future<void>& testComplete, MemoryType mem_type) {
     LOG(INFO) << "Server thread starting on NPU " << npu_id;
     checkAclError(aclrtSetDevice(npu_id), "Failed to set device");
     // Server (target) setup
@@ -179,9 +167,15 @@ static void serverThread(int npu_id, const std::string& metadataServer,
 
     const size_t kDataLength = 4194304;
     void* server_buffer = allocateAclBuffer(kDataLength * 2, npu_id, mem_type);
-    int rc = server_engine->registerLocalMemory(server_buffer, kDataLength * 2,
-                                                "cpu: 0");
-    ASSERT_EQ(rc, 0);
+    if (mem_type == MemoryType::FABRIC_MEM_HOST) {
+        int rc = server_engine->registerLocalMemory(
+            server_buffer, kDataLength * 2, "cpu: " + std::to_string(npu_id));
+        ASSERT_EQ(rc, 0);
+    } else {
+        int rc = server_engine->registerLocalMemory(
+            server_buffer, kDataLength * 2, "npu: " + std::to_string(npu_id));
+        ASSERT_EQ(rc, 0);
+    }
 
     // Notify main thread that server is ready
     serverReady.set_value();
@@ -312,6 +306,7 @@ TEST(UBShmemTransportTest, WriteAndReadCrossNPUFabric) {
     LOG(INFO) << "Test started: Server on NPU " << FLAGS_server_npu_id
               << ", Client on NPU " << FLAGS_client_npu_id;
 
+    unsetenv("MC_USE_UBSHMEM_IPC");
     // Create promises and futures for synchronization
     std::promise<void> serverReadyPromise;
     std::future<void> serverReadyFuture = serverReadyPromise.get_future();
@@ -320,18 +315,16 @@ TEST(UBShmemTransportTest, WriteAndReadCrossNPUFabric) {
     std::future<void> testCompleteFuture = testCompletePromise.get_future();
 
     // Start server thread
-    std::thread serverThreadObj(serverThread, FLAGS_server_npu_id,
-                                FLAGS_metadata_server, FLAGS_local_server_name,
-                                std::ref(serverReadyPromise),
-                                std::ref(testCompleteFuture),
-                                MemoryType::FABRIC_MEM_HOST);
+    std::thread serverThreadObj(
+        serverThread, FLAGS_server_npu_id, FLAGS_metadata_server,
+        FLAGS_local_server_name, std::ref(serverReadyPromise),
+        std::ref(testCompleteFuture), MemoryType::FABRIC_MEM_HOST);
 
     // Start client thread
-    std::thread clientThreadObj(clientThread, FLAGS_client_npu_id,
-                                FLAGS_metadata_server, FLAGS_local_server_name,
-                                std::ref(serverReadyFuture),
-                                std::ref(testCompletePromise),
-                                MemoryType::FABRIC_MEM_DEVICE);
+    std::thread clientThreadObj(
+        clientThread, FLAGS_client_npu_id, FLAGS_metadata_server,
+        FLAGS_local_server_name, std::ref(serverReadyFuture),
+        std::ref(testCompletePromise), MemoryType::FABRIC_MEM_DEVICE);
 
     // Wait for both threads to complete
     if (serverThreadObj.joinable()) {
@@ -348,6 +341,7 @@ TEST(UBShmemTransportTest, WriteAndReadCrossNPUIPC) {
     LOG(INFO) << "Test started: Server on NPU " << FLAGS_server_npu_id
               << ", Client on NPU " << FLAGS_client_npu_id;
 
+    setenv("MC_USE_UBSHMEM_IPC", "1", 1);
     // Create promises and futures for synchronization
     std::promise<void> serverReadyPromise;
     std::future<void> serverReadyFuture = serverReadyPromise.get_future();
@@ -356,18 +350,16 @@ TEST(UBShmemTransportTest, WriteAndReadCrossNPUIPC) {
     std::future<void> testCompleteFuture = testCompletePromise.get_future();
 
     // Start server thread
-    std::thread serverThreadObj(serverThread, FLAGS_server_npu_id,
-                                FLAGS_metadata_server, FLAGS_local_server_name,
-                                std::ref(serverReadyPromise),
-                                std::ref(testCompleteFuture),
-                                MemoryType::IPC_MEM_HOST);
+    std::thread serverThreadObj(
+        serverThread, FLAGS_server_npu_id, FLAGS_metadata_server,
+        FLAGS_local_server_name, std::ref(serverReadyPromise),
+        std::ref(testCompleteFuture), MemoryType::IPC_MEM_DEVICE);
 
     // Start client thread
-    std::thread clientThreadObj(clientThread, FLAGS_client_npu_id,
-                                FLAGS_metadata_server, FLAGS_local_server_name,
-                                std::ref(serverReadyFuture),
-                                std::ref(testCompletePromise),
-                                MemoryType::IPC_MEM_DEVICE);
+    std::thread clientThreadObj(
+        clientThread, FLAGS_client_npu_id, FLAGS_metadata_server,
+        FLAGS_local_server_name, std::ref(serverReadyFuture),
+        std::ref(testCompletePromise), MemoryType::IPC_MEM_DEVICE);
 
     // Wait for both threads to complete
     if (serverThreadObj.joinable()) {

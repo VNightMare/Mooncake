@@ -27,10 +27,31 @@ mkdir -p "$OUTPUT_DIR"
 
 CPP_FILE=$(dirname $(readlink -f $0))/ubshmem_fabric_allocator.cpp
 
+# Detect CPU architecture
+CURRENT_CPU=$(uname -m)
+CPU_ARCH="unknown"
+if [[ "$CURRENT_CPU" =~ ^(aarch64|arm64)$ ]]; then
+    CPU_ARCH="aarch64"
+elif [[ "$CURRENT_CPU" =~ ^(x86_64|amd64)$ ]]; then
+    CPU_ARCH="x86_64"
+else
+    echo "Warning: Unsupported cpu arch: $CURRENT_CPU"
+fi
+
 # Find Ascend toolkit
-ASCEND_TOOLKIT_ROOT=$(find /usr/local/Ascend/ascend-toolkit/latest -maxdepth 1 -type d -name "*-linux" 2>/dev/null | head -n 1)
+if [ -n "$ASCEND_HOME_PATH" ]; then
+    echo "Use env ASCEND_HOME_PATH"
+    ASCEND_TOOLKIT_ROOT="${ASCEND_HOME_PATH}/${CPU_ARCH}-linux"
+else
+    ASCEND_TOOLKIT_ROOT=$(find /usr/local/Ascend/ascend-toolkit/latest -maxdepth 1 -type d -name "*-linux" 2>/dev/null | head -n 1)
+fi
+
 if [ -z "$ASCEND_TOOLKIT_ROOT" ]; then
-    echo "Error: Cannot find Ascend toolkit in /usr/local/Ascend/ascend-toolkit/latest"
+    if [ -n "$ASCEND_HOME_PATH" ]; then
+        echo "Error: Cannot find Ascend toolkit in ${ASCEND_HOME_PATH}/${CPU_ARCH}-linux"
+    else
+        echo "Error: Cannot find Ascend toolkit in /usr/local/Ascend/ascend-toolkit/latest"
+    fi
     exit 1
 fi
 

@@ -529,8 +529,12 @@ int UBShmemTransport::unregisterLocalMemoryBatch(
 
 void *UBShmemTransport::allocatePinnedLocalMemory(size_t size) {
     if (!supportFabricMem()) {
-        LOG(ERROR) << "UBShmemTransport: IPC is not supported now.";
-        return nullptr;
+        void *ptr = nullptr;
+        if (!checkAcl(aclrtMalloc(&ptr, size, ACL_MEM_MALLOC_HUGE_FIRST),
+                      "UBShmemTransport: aclrtMalloc failed")) {
+            return nullptr;
+        }
+        return ptr;
     }
 
     size_t granularity = 0;
@@ -551,7 +555,19 @@ void *UBShmemTransport::allocatePinnedLocalMemory(size_t size) {
     prop.location.id = aclDev;
     prop.reserve = 0;
 
-    auto result = aclrtMallocPhysical(&handle, size, &prop, 0);
+    auto result = aclrtMemGetAllocationGranularity(
+        &prop, ACL_RT_MEM_ALLOC_GRANULARITY_MINIMUM, &granularity);
+    if (!checkAcl(result,
+                  "UBShmemTransport: Failed to get allocation granularity")) {
+        return nullptr;
+    }
+    // fix size
+    size = (size + granularity - 1) & ~(granularity - 1);
+    if (size == 0) {
+        size = granularity;
+    }
+
+    result = aclrtMallocPhysical(&handle, size, &prop, 0);
     if (!checkAcl(
             result,
             "UBShmemTransport: Failed to allocate specific device memory")) {
@@ -578,7 +594,7 @@ void *UBShmemTransport::allocatePinnedLocalMemory(size_t size) {
 
 void UBShmemTransport::freePinnedLocalMemory(void *ptr) {
     if (!supportFabricMem()) {
-        LOG(ERROR) << "UBShmemTransport: IPC is not supported now.";
+        aclrtFree(ptr);
         return;
     }
 

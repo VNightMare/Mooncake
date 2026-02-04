@@ -68,7 +68,7 @@ g++ "$CPP_FILE" \
     ${INCLUDE_FLAGS} \
     -L"$ASCEND_LIB_DIR" \
     -lascendcl \
-    -DUSE_ASCEND=1
+    -DUSE_UBSHMEM=ON
 
 if [ $? -eq 0 ]; then
     echo "Successfully built ubshmem_fabric_allocator.so in $OUTPUT_DIR"

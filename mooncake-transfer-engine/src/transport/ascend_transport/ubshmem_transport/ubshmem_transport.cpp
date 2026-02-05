@@ -555,19 +555,7 @@ void *UBShmemTransport::allocatePinnedLocalMemory(size_t size) {
     prop.location.id = aclDev;
     prop.reserve = 0;
 
-    auto result = aclrtMemGetAllocationGranularity(
-        &prop, ACL_RT_MEM_ALLOC_GRANULARITY_MINIMUM, &granularity);
-    if (!checkAcl(result,
-                  "UBShmemTransport: Failed to get allocation granularity")) {
-        return nullptr;
-    }
-    // fix size
-    size = (size + granularity - 1) & ~(granularity - 1);
-    if (size == 0) {
-        size = granularity;
-    }
-
-    result = aclrtMallocPhysical(&handle, size, &prop, 0);
+    auto result = aclrtMallocPhysical(&handle, size, &prop, 0);
     if (!checkAcl(
             result,
             "UBShmemTransport: Failed to allocate specific device memory")) {

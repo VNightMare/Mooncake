@@ -45,18 +45,7 @@ void *mc_ub_fabric_malloc(ssize_t size, int device) {
     prop.memAttr = ACL_HBM_MEM_HUGE;
     prop.reserve = 0;
 
-    aclError result = aclrtMemGetAllocationGranularity(
-        &prop, ACL_RT_MEM_ALLOC_GRANULARITY_MINIMUM, &granularity);
-    if (result != ACL_ERROR_NONE) {
-        std::cerr << "aclrtMemGetAllocationGranularity failed: " << result;
-        return nullptr;
-    }
-    // fix size
-    size = (size + granularity - 1) & ~(granularity - 1);
-    if (size == 0) {
-        size = granularity;
-    }
-    result = aclrtMallocPhysical(&handle, size, &prop, 0);
+    aclError result = aclrtMallocPhysical(&handle, size, &prop, 0);
     if (result != ACL_ERROR_NONE) {
         std::cerr << "aclrtMallocPhysical failed: " << result;
         return nullptr;
